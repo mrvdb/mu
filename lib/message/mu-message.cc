@@ -415,11 +415,27 @@ accumulate_text(const MimePart& part, Message::Private& info,
 static bool /* heuristic */
 looks_like_attachment(const MimeObject& parent, const MessagePart& mpart)
 {
-	if (parent) { /* crypto multipart children are not considered attachments */
+	if (parent) {
 		if (const auto parent_ctype{parent.content_type()}; parent_ctype) {
+			/* crypto multipart children are not considered attachments */
 			if (parent_ctype->is_type("multipart", "signed") ||
 			    parent_ctype->is_type("multipart", "encrypted"))
 				return false;
+
+			/* RFC 2387 / RFC 2392: image parts inside multipart/related
+			 * that carry a Content-Id are the sibling text/html's own
+			 * referenced resources (logos, sig graphics, embedded
+			 * newsletter images), not attachments the user chose to
+			 * send. Restrict to image types only, because some MUAs
+			 * (notably Outlook/Exchange forwarded mail) also nest real
+			 * attachments inside multipart/related with a Content-Id,
+			 * and skipping those is unwanted. */
+			if (parent_ctype->is_type("multipart", "related") &&
+			    mpart.mime_object().header("Content-Id")) {
+				if (const auto ct{mpart.mime_object().content_type()};
+				    ct && ct->is_type("image", "*"))
+					return false;
+			}
 		}
 	}
 
